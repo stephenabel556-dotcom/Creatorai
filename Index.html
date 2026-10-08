@@ -1,0 +1,118 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>CreatorAI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#13101c;--card:#1f1a2e;--line:#332c49;--tx:#f6f2ff;--mut:#a79fc0;--a:#c4b1ff;--b:#ffb997;font-family:Sora,system-ui,sans-serif}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx)}h1{font-size:1.7rem;margin:.2em 0}h3{margin:.4em 0 .1em}
+#app{max-width:760px;margin:auto;padding:calc(16px + env(safe-area-inset-top)) 16px 120px}
+.mut,small{color:var(--mut)}header{display:flex;justify-content:space-between;align-items:center}
+.card{background:var(--card);border:1px solid var(--line);border-radius:24px;padding:18px;margin:12px 0}.err{border-color:#ff7a8a;color:#ffc2c9}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px}
+.tile{display:block;color:inherit;text-decoration:none;min-height:150px;transition:transform .15s}.tile:active{transform:scale(.97)}.tile b{font-size:2.2rem}
+.hero{background:linear-gradient(135deg,var(--a),var(--b));color:#241a3d;border:0}.hero small{color:#4b3d6e}.hero big{font-size:3rem;font-weight:800;display:block}
+button,.btn,select,input,textarea{font:inherit;color:inherit}
+button,.btn{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:12px 18px;cursor:pointer;text-decoration:none;display:inline-block}
+.go{width:100%;background:linear-gradient(135deg,var(--a),var(--b));color:#241a3d;font-weight:600;border:0;padding:16px;margin:12px 0}.go:disabled{opacity:.5}
+.link{background:none;border:0;color:var(--a)}
+input,textarea,select{width:100%;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin:6px 0}
+:focus-visible{outline:2px solid var(--a);outline-offset:2px}
+.chips,.tabs,.row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.chip.on,.tabs .on{background:var(--a);color:#241a3d;border-color:var(--a)}
+.drop{display:grid;place-items:center;min-height:170px;border:2px dashed var(--line);border-radius:24px;background:center/cover;cursor:pointer;color:var(--mut)}
+img,video{width:100%;border-radius:20px;display:block;margin-bottom:10px}
+.bar{height:8px;border-radius:9px;background:var(--line);overflow:hidden}.bar i{display:block;width:40%;height:100%;background:var(--a);border-radius:9px;animation:sl 1.2s ease-in-out infinite}
+@keyframes sl{from{margin-left:-40%}to{margin-left:100%}}
+.pill{background:var(--card);border:1px solid var(--line);border-radius:999px;padding:8px 14px;color:var(--a);text-decoration:none}
+#nav{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom));width:min(420px,calc(100% - 24px));display:flex;background:#1f1a2ee6;backdrop-filter:blur(14px);border:1px solid var(--line);border-radius:999px;padding:6px}
+#nav a{flex:1;text-align:center;padding:10px 0;border-radius:999px;color:var(--mut);text-decoration:none;font-size:.85rem}#nav a.on{background:var(--a);color:#241a3d}
+.auth{text-align:center;padding-top:8vh}.auth input{text-align:left}.logo{font-size:3.5rem;color:var(--a)}#g{display:flex;justify-content:center;margin:10px 0}
+.toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);background:#fff;color:#241a3d;padding:12px 18px;border-radius:14px;z-index:9;max-width:90%}
+.splash{display:grid;place-items:center;height:80vh;text-align:center;animation:pop .8s}@keyframes pop{from{opacity:0;transform:scale(.9)}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important}}
+</style></head><body><main id="app"></main>
+<nav id="nav" hidden><a href="#/home">Home</a><a href="#/create">Create</a><a href="#/creations">Creations</a><a href="#/profile">Profile</a></nav>
+<script>
+const $=s=>document.querySelector(s),app=$('#app'),views={};let me=null,cfg=null;
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const api=async(p,o={})=>{const r=await fetch('/api'+p,{method:o.method||(o.body?'POST':'GET'),headers:{'Content-Type':'application/json'},body:o.body&&JSON.stringify(o.body)});const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||'Something went wrong. Try again.'),{status:r.status});return j};
+const toast=m=>{const t=document.createElement('div');t.className='toast';t.textContent=m;document.body.append(t);setTimeout(()=>t.remove(),3500)};
+const refreshMe=async()=>{me=await api('/me');document.querySelectorAll('.pill').forEach(p=>p.textContent='✦ '+me.credits)};
+const head=t=>`<header><h1>${t}</h1><a class="pill" href="#/credits">✦ ${me.credits}</a></header>`;
+const price=(c,v)=>c==='NGN'?'₦'+(v/100).toLocaleString():'$'+(v/100).toFixed(2);
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const shrink=f=>new Promise((ok,no)=>{const i=new Image();i.onload=()=>{const s=Math.min(1,1536/Math.max(i.width,i.height)),c=document.createElement('canvas');c.width=i.width*s;c.height=i.height*s;c.getContext('2d').drawImage(i,0,0,c.width,c.height);ok(c.toDataURL('image/jpeg',.9))};i.onerror=()=>no(Error('Could not read that image'));i.src=URL.createObjectURL(f)});
+
+async function route(){
+ const [,page='home',sub]=location.hash.split('/');
+ try{cfg??=await api('/config');me=await api('/me')}catch{me=null}
+ $('#nav').hidden=!me;
+ if(!me&&page!=='auth')return location.hash='#/auth';
+ if(me&&page==='auth')return location.hash='#/home';
+ document.querySelectorAll('#nav a').forEach(a=>a.classList.toggle('on',a.getAttribute('href')==='#/'+(['credits','pay'].includes(page)?'profile':page)));
+ (views[page]||views.home)(sub);
+}
+views.auth=()=>{let mode='login';const draw=()=>{
+ app.innerHTML=`<div class=auth><div class=logo>✦</div><h1>CreatorAI</h1><p class=mut>Turn your photos into posts people stop for.</p>${mode==='signup'?'<input id=n placeholder="Your name">':''}<input id=e type=email placeholder="Email" autocomplete=email><input id=pw type=password placeholder="Password (8+ characters)"><button class=go id=go>${mode==='login'?'Log in':'Create account (3 free credits)'}</button><div id=g></div><button class=link id=sw>${mode==='login'?'New here? Create an account':'Have an account? Log in'}</button></div>`;
+ $('#sw').onclick=()=>{mode=mode==='login'?'signup':'login';draw()};
+ $('#go').onclick=async()=>{try{await api('/auth/'+mode,{body:{name:$('#n')?.value,email:$('#e').value,password:$('#pw').value}});location.hash='#/home'}catch(x){toast(x.message)}};
+ if(cfg.googleClientId){const init=()=>{google.accounts.id.initialize({client_id:cfg.googleClientId,callback:async r=>{try{await api('/auth/google',{body:{credential:r.credential}});location.hash='#/home'}catch(x){toast(x.message)}}});google.accounts.id.renderButton($('#g'),{theme:'filled_black',shape:'pill',size:'large',width:280})};
+  if(window.google)init();else{const s=document.createElement('script');s.src='https://accounts.google.com/gsi/client';s.onload=init;document.head.append(s)}}};draw()};
+
+views.home=()=>{const T={photo:['🎨','Photo','Turn a photo into new art'],background:['🏝️','Background','Put yourself anywhere'],video:['🎬','Video','Bring a photo to life'],caption:['✍️','Caption','Words for your post']};
+ app.innerHTML=head('Hey, '+esc(me.name.split(' ')[0]))+`<div class="card hero"><small>Your credits</small><big>${me.credits}</big><a class=btn href="#/credits">Get more</a></div><div class=grid>${Object.entries(T).map(([k,[e,n,d]])=>`<a class="card tile" href="#/create/${k}"><b>${e}</b><h3>${n}</h3><small>${d}</small></a>`).join('')}</div>`};
+
+const KINDS={photo:['Photo','Describe the image you want'],background:['Background','Extra details (optional)'],video:['Video','Describe the motion, e.g. slow zoom, hair blowing in the wind'],caption:['Caption','What is your post about?']};
+const STY={photo:['Cinematic','Anime','Watercolor','Pop art','Vintage','3D render'],background:['Beach','Luxury room','City','Studio','Sunset','Night','Custom'],video:[],caption:['Funny','Romantic','Professional','Motivational','Casual']};
+const tabs=k=>`<div class=tabs>${Object.entries(KINDS).map(([id,[n]])=>`<a class="btn${id===k?' on':''}" href="#/create/${id}">${n}</a>`).join('')}</div>`;
+const media=g=>g.kind==='video'?`<video src="/media/${g.media_id}" controls playsinline loop></video>`:`<img src="/media/${g.media_id}" alt="${esc(g.prompt)}">`;
+const result=g=>g.type==='caption'?g.result_text.split('\n').filter(Boolean).map(l=>`<div class=card><p>${esc(l)}</p><button data-copy="${esc(l)}">Copy</button></div>`).join(''):
+ `<div class=card>${media(g)}<div class=row><a class=btn href="/media/${g.media_id}?dl=1">Download</a><button data-share="${g.media_id}">Share</button><button data-del="${g.id}">Delete</button></div><small>Saved in Creations</small></div>`;
+async function follow(g,out){
+ out.innerHTML='<div class=card><div class=bar><i></i></div><p class=mut>Generating. Videos can take a couple of minutes. Leave this page any time; it will be in Creations.</p></div>';
+ while(['processing','saving'].includes(g.status)){await sleep(3000);if(!out.isConnected)return;g=await api('/generations/'+g.id).catch(()=>g)}
+ refreshMe();out.innerHTML=g.status==='failed'?`<div class="card err">${esc(g.error)}</div>`:result(g);
+}
+views.create=k=>{
+ if(!KINDS[k]){app.innerHTML=head('Create')+tabs()+'<p class=mut>Pick what you want to make.</p>';return}
+ const st=STY[k],need=k!=='caption';let img=null,sty=st[0]||'';const c=cfg.costs[k];
+ app.innerHTML=head(KINDS[k][0])+tabs(k)+(need?`<label class=drop id=drop><span>Tap to upload a photo</span><input id=f type=file accept="image/png,image/jpeg,image/webp" hidden></label>`:'')+
+ (st.length?`<div class=chips>${st.map((s,i)=>`<button class="chip${i?'':' on'}">${s}</button>`).join('')}</div>`:'')+
+ (k==='video'?`<select id=sec><option value=5>5 seconds (${c} credits)</option><option value=10>10 seconds (${cfg.video10} credits)</option></select>`:'')+
+ `<textarea id=p rows=3 maxlength=1000 placeholder="${KINDS[k][1]}"></textarea><button class=go id=go>Generate (${c} credit${c>1?'s':''})</button><div id=out></div>`;
+ if(need)$('#f').onchange=async e=>{try{img=await shrink(e.target.files[0]);$('#drop').style.backgroundImage=`url(${img})`;$('#drop span').hidden=true}catch(x){toast(x.message)}};
+ document.querySelectorAll('.chip').forEach(b=>b.onclick=()=>{document.querySelectorAll('.chip').forEach(x=>x.classList.remove('on'));b.classList.add('on');sty=b.textContent});
+ $('#go').onclick=async()=>{const b=$('#go');b.disabled=true;try{if(need&&!img)throw Error('Upload a photo first');
+  const g=await api('/generate',{body:{type:k,prompt:$('#p').value,style:sty,image:img,seconds:$('#sec')?.value}});refreshMe();await follow(g,$('#out'))}
+  catch(e){toast(e.message);if(e.status===402)location.hash='#/credits'}b.disabled=false};
+};
+views.creations=async()=>{
+ app.innerHTML=head('My Creations')+'<p class=mut>Loading…</p>';
+ try{const list=await api('/creations');
+  app.innerHTML=head('My Creations')+(list.length?'<div class=grid id=list></div>':'<div class=card><h3>Nothing here yet</h3><p class=mut>Your images, videos and captions will show up here.</p><a class=btn href="#/create/photo">Make your first one</a></div>');
+  list.forEach(g=>{const d=document.createElement('div');d.id='g'+g.id;$('#list').append(d);if(g.status==='done')d.innerHTML=result(g);else follow(g,d)})
+ }catch(e){app.innerHTML=head('My Creations')+`<div class="card err">${esc(e.message)}</div>`}};
+views.credits=async()=>{
+ const on=cfg.providers;let prov=on.paystack?'paystack':'stripe';
+ const draw=()=>{const cur=prov==='paystack'?'ngn':'usd',C=cur.toUpperCase(),li=(kind,o)=>Object.entries(o).map(([k,v])=>`<div class="card"><h3>${k[0].toUpperCase()+k.slice(1)}</h3><p>${v.credits} credits${kind==='plan'?' per month':''}</p><button class=go data-buy="${kind}:${k}">${price(C,v[cur])}${kind==='plan'&&prov==='stripe'?' / month':''}</button></div>`).join('');
+  app.innerHTML=head('Credits')+(on.paystack||on.stripe?`<div class=row><button class="chip${prov==='paystack'?' on':''}" data-p=paystack ${on.paystack?'':'disabled'}>Nigeria (₦, Paystack)</button><button class="chip${prov==='stripe'?' on':''}" data-p=stripe ${on.stripe?'':'disabled'}>International ($, card)</button></div><h3>Credit packs</h3><div class=grid>${li('pack',cfg.packs)}</div><h3>Monthly plans</h3><div class=grid>${li('plan',cfg.plans)}</div>${prov==='paystack'?'<small>On Paystack, plans are one-month passes and do not auto-renew.</small>':''}`:'<div class="card err">Payments are not set up yet. Add Paystack or Stripe keys on the server.</div>');
+  document.querySelectorAll('[data-p]').forEach(b=>b.onclick=()=>{prov=b.dataset.p;draw()});
+  document.querySelectorAll('[data-buy]').forEach(b=>b.onclick=async()=>{const [kind,item]=b.dataset.buy.split(':');b.disabled=true;try{location=(await api('/pay/checkout',{body:{provider:prov,kind,item}})).url}catch(e){toast(e.message);b.disabled=false}})};draw()};
+views.pay=async ref=>{
+ app.innerHTML='<div class=splash><div><div class=bar><i></i></div><p>Confirming your payment…</p></div></div>';
+ for(let i=0;i<30;i++){const s=await api('/pay/'+ref+'/status').catch(()=>({}));
+  if(s.status==='paid'){await refreshMe();app.innerHTML=`<div class=splash><div><div class=logo>✦</div><h1>Payment confirmed</h1><p class=mut>${s.credits} credits added. You have ${me.credits}.</p><a class=btn href="#/create">Start creating</a></div></div>`;return}
+  if(s.status==='failed')break;await sleep(2000)}
+ app.innerHTML='<div class=splash><div><h1>Still waiting</h1><p class=mut>We have not received confirmation yet. If you were charged, credits appear automatically within a few minutes.</p><a class=btn href="#/profile">Back to profile</a></div></div>'};
+views.profile=async()=>{
+ const h=await api('/history').catch(()=>({payments:[],credits:[]})),s=me.subscription;
+ app.innerHTML=head('Profile')+`<div class=card><h3>${esc(me.name)}</h3><p class=mut>${esc(me.email)}</p><p>Plan: ${s?esc(s.plan)+' (renews by '+esc(s.current_period_end.slice(0,10))+')':'Free'}</p><a class=btn href="#/credits">Buy credits</a></div>
+ <div class=card><h3>Payments</h3>${h.payments.length?h.payments.map(p=>`<p><small>${esc(p.created_at.slice(0,10))}</small> ${esc(p.item)}, ${price(p.currency,p.amount)} <small>${esc(p.status)}</small></p>`).join(''):'<p class=mut>No payments yet.</p>'}</div>
+ <div class=card><h3>Credit activity</h3>${h.credits.map(c=>`<p><small>${esc(c.created_at.slice(0,10))}</small> ${c.delta>0?'+':''}${c.delta} <small>${esc(c.reason)}</small></p>`).join('')}</div>
+ <div class=card><h3>Settings</h3><button id=out>Log out</button></div>`;
+ $('#out').onclick=async()=>{await api('/auth/logout',{method:'POST'});me=null;location.hash='#/auth';route()}};
+document.addEventListener('click',async e=>{const b=e.target.closest('[data-share],[data-copy],[data-del]');if(!b)return;
+ if(b.dataset.copy!=null){await navigator.clipboard.writeText(b.dataset.copy);toast('Copied')}
+ if(b.dataset.share){try{const bl=await(await fetch('/media/'+b.dataset.share)).blob(),f=new File([bl],'creatorai.'+(bl.type.includes('video')?'mp4':'png'),{type:bl.type});
+  if(navigator.canShare?.({files:[f]}))await navigator.share({files:[f]});else toast('Sharing is not supported here. Use Download.')}catch(x){if(x.name!=='AbortError')toast('Could not share')}}
+ if(b.dataset.del&&confirm('Delete this creation? This cannot be undone.')){try{await api('/creations/'+b.dataset.del,{method:'DELETE'});b.closest('.card').remove();toast('Deleted')}catch(x){toast(x.message)}}});
+app.innerHTML='<div class=splash><div><div style="font-size:4rem;color:var(--a)">✦</div><h1>CreatorAI</h1></div></div>';
+addEventListener('hashchange',route);setTimeout(route,900);
+</script></body></html>
